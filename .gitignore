@@ -1,2 +1,4 @@
 chrome.deb
+*.o
+*.wasm
 
