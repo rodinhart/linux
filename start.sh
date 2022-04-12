@@ -10,4 +10,5 @@ curl -o chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_curre
 sudo apt install --assume-yes ./chrome.deb
 sudo apt install --assume-yes clang
 sudo apt install --assume-yes lld-8
+sudo apt install --assume-yes nodejs
 echo "All done!"
