@@ -4,10 +4,19 @@
   </head>
   <body>
   <script>
+    // const memory = new WebAssembly.Memory({initial: 1, maximum: 2})
     WebAssembly.instantiateStreaming(fetch("./add.c.wasm"), {}).then(result => {
       //
       console.log({result})
-      console.log(result.instance.exports.add(3, 4))
+      console.log(result.instance.exports.add(3.3, 4.4))
+
+      const mem = new Float32Array(result.instance.exports.memory.buffer)
+      //console.log(mem.length)
+      mem[0] = 1
+      mem[1] = 2
+      mem[2] = 4
+      mem[3] = 8
+      console.log(result.instance.exports.sum(4))
     })
   </script> 
   </body>
