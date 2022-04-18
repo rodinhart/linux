@@ -2,36 +2,33 @@
 
 <head>
   <meta charset="utf-8" />
+  <style>
+    body {
+      margin: 0px;
+    }
+  </style>
 </head>
 
 <body>
-  <canvas id="canvas" width="256" height="256"></canvas>
+  <canvas id="canvas" width="1024" height="1025"></canvas>
   <script>
     // const memory = new WebAssembly.Memory({initial: 1, maximum: 2})
     WebAssembly.instantiateStreaming(fetch("./add.c.wasm"), {}).then(result => {
-      //
-      console.log({ result })
-      const { instance: { exports: { memory, add, sum, draw } } } = result
-
-      console.log(add(3.3, 4.4))
-
-      const mem = new Float32Array(memory.buffer)
-      //console.log(mem.length)
-      mem[0] = 1
-      mem[1] = 2
-      mem[2] = 4
-      mem[3] = 8
-      console.log(sum(0))
+      const { instance: { exports: { memory, draw } } } = result
 
       /**
        * @type HTMLCanvasElement
        */
       const canvas = document.getElementById("canvas")
       const g = canvas.getContext("2d")
-      console.log(memory.grow(2))
-      const bytes = new Uint8ClampedArray(memory.buffer, 0, 256 * 256 * 4)
-      const img = new ImageData(bytes, 256, 256)
-      draw(0, 256, 256)
+      const W = canvas.width
+      const H = canvas.height
+      console.log(memory.grow(W * H * 4 / (256 * 256)))
+      const bytes = new Uint8ClampedArray(memory.buffer, 0, W * H * 4)
+      const img = new ImageData(bytes, W, H)
+      console.time("Taken")
+      draw(0, W, H)
+      console.timeEnd("Taken")
       g.putImageData(img, 0, 0)
     })
   </script>
