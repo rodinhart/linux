@@ -1,0 +1,123 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+  </head>
+
+  <body>
+    <script>
+      const align = (p) => 4 * (((p + 3) / 4) | 0);
+      const compactStrings = (stringsInstance, buffer, len) => {
+        const SIZE = 65536;
+
+        const {
+          exports: { memory, compact },
+        } = stringsInstance;
+
+        // get current size
+        const needed = Math.ceil(
+          (align(buffer.byteLength) + 4 * SIZE + 4 * len + 6 * len) /
+            (256 * 256)
+        );
+        if (needed > 2) {
+          memory.grow(needed - 2);
+        }
+
+        const bytes = new Uint8Array(
+          memory.buffer,
+          0,
+          memory.buffer.byteLength
+        );
+        let tmp = new Uint8Array(buffer, 0, buffer.byteLength);
+        for (let i = 0; i < bytes.byteLength; i++) {
+          bytes[i] = tmp[i];
+        }
+
+        const hashTable = new Uint32Array(
+          memory.buffer,
+          align(buffer.byteLength),
+          SIZE
+        );
+
+        const resultLen = compact(
+          0,
+          len,
+          4 * len,
+          align(buffer.byteLength) + 4 * SIZE,
+          align(buffer.byteLength) + 4 * SIZE + 4 * len,
+          align(buffer.byteLength)
+        );
+
+        tmp = new Uint8Array(
+          memory.buffer,
+          align(buffer.byteLength) + 4 * SIZE,
+          4 * len + resultLen
+        );
+
+        const result = new ArrayBuffer(4 * len + resultLen);
+        const resultBytes = new Uint8Array(result, 0, result.byteLength);
+        for (let i = 0; i < result.byteLength; i++) {
+          resultBytes[i] = tmp[i];
+        }
+
+        return result;
+      };
+
+      WebAssembly.instantiateStreaming(fetch("./strings.c.wasm"), {}).then(
+        (result) => {
+          const dataX = ["Hello", "World", "Hello", "World", "Hello"];
+          const data = new Array(1e5)
+            .fill(0)
+            .map(() => Math.random().toString(16).substring(11));
+
+          const mem = new ArrayBuffer(4 * data.length + 6 * data.length);
+          const strings = new Uint32Array(mem, 0, data.length);
+          const buffer = new Uint8Array(
+            mem,
+            strings.byteOffset + strings.byteLength,
+            mem.byteLength - (strings.byteOffset + strings.byteLength)
+          );
+
+          let p = 0;
+          for (let i = 0; i < data.length; i += 1) {
+            const value = data[i];
+            strings[i] = p;
+
+            const encoded = new TextEncoder().encode(value);
+
+            for (let j = 0; j < encoded.byteLength; j += 1) {
+              buffer[p] = encoded[j];
+              p += 1;
+            }
+
+            buffer[p] = 0xff;
+            p += 1;
+          }
+
+          const s = performance.now();
+          const target = compactStrings(result.instance, mem, data.length);
+          console.log({ mem, target });
+          console.log("Time taken: ", performance.now() - s);
+          console.log({ p, len: target.byteLength - 4 * data.length });
+
+          const strings2 = new Uint32Array(target, 0, data.length);
+          const buffer2 = new Uint8Array(
+            target,
+            strings2.byteOffset + strings2.byteLength,
+            target.byteLength - (strings2.byteOffset + strings2.byteLength)
+          );
+
+          for (let i = 0; i < Math.min(16, data.length); i += 1) {
+            const p = strings2[i];
+            let n = 0;
+            while (buffer2[p + n] !== 0xff) n += 1;
+            const encoded = new Uint8Array(n);
+            for (let j = 0; j < n; j += 1) {
+              encoded[j] = buffer[p + j];
+            }
+            console.log(new TextDecoder().decode(encoded));
+          }
+        }
+      );
+    </script>
+  </body>
+</html>
