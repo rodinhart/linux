@@ -7,7 +7,7 @@
     <script>
       const align = (p) => 4 * (((p + 3) / 4) | 0);
 
-      const interop = (instance, methodName, ...args) => {
+      const interop = ({ instance, method, writeback }, ...args) => {
         const {
           exports: { memory },
         } = instance;
@@ -53,19 +53,22 @@
           }
         }
 
-        const result = instance.exports[methodName](...raw);
+        const result = instance.exports[method](...raw);
 
         // writeback
         p = 4;
-        for (const arg of args) {
+        for (let i = 0; i < args.length; i++) {
+          const arg = args[i];
           if (typeof arg === "object" && "byteLength" in arg) {
-            const t = new Uint8Array(
-              arg.buffer,
-              arg.byteOffset,
-              arg.byteLength
-            );
-            for (let i = 0; i < arg.byteLength; i++) {
-              t[i] = bytes[p + i];
+            if (writeback.has(i)) {
+              const t = new Uint8Array(
+                arg.buffer,
+                arg.byteOffset,
+                arg.byteLength
+              );
+              for (let i = 0; i < arg.byteLength; i++) {
+                t[i] = bytes[p + i];
+              }
             }
 
             p += align(arg.byteLength);
@@ -79,8 +82,7 @@
         const SIZE = 65536;
 
         return interop(
-          instance,
-          "compact",
+          { instance, method: "compact", writeback: new Set([0, 1]) },
           target,
           offsets,
           count,
@@ -132,11 +134,9 @@
             let n = 0;
             while (target[p + n] !== 0xff) n += 1;
 
-            const encoded = new Uint8Array(n);
-            for (let j = 0; j < n; j += 1) {
-              encoded[j] = target[p + j];
-            }
-            console.log(new TextDecoder().decode(encoded));
+            console.log(
+              new TextDecoder().decode(new Uint8Array(target.buffer, p, n))
+            );
           }
         }
       );
