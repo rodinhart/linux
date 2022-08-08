@@ -6,17 +6,21 @@
   <body>
     <script>
       const align = (p) => 4 * (((p + 3) / 4) | 0);
-      const compactStrings = (stringsInstance, buffer, count) => {
-        const SIZE = 65536;
 
+      const interop = (instance, methodName, ...args) => {
         const {
-          exports: { memory, compact },
-        } = stringsInstance;
+          exports: { memory },
+        } = instance;
+
+        let required = 0;
+        for (const arg of args) {
+          if (typeof arg === "object" && "byteLength" in arg) {
+            required += align(arg.byteLength);
+          }
+        }
 
         // get current size
-        const needed = Math.ceil(
-          (align(buffer.byteLength) + 4 * SIZE + 6 * count) / (256 * 256)
-        );
+        const needed = Math.ceil(required / (256 * 256));
         if (needed > 2) {
           memory.grow(needed - 2);
         }
@@ -26,43 +30,61 @@
           0,
           memory.buffer.byteLength
         );
-        let tmp = new Uint8Array(buffer, 0, buffer.byteLength);
-        for (let i = 0; i < bytes.byteLength; i++) {
-          bytes[i] = tmp[i];
+
+        const raw = [];
+        let p = 4;
+        for (const arg of args) {
+          if (typeof arg === "object" && "byteLength" in arg) {
+            raw.push(p);
+            const t = new Uint8Array(
+              arg.buffer,
+              arg.byteOffset,
+              arg.byteLength
+            );
+            for (let i = 0; i < arg.byteLength; i++) {
+              bytes[p + i] = t[i];
+            }
+
+            p += align(arg.byteLength);
+          } else {
+            raw.push(arg);
+          }
         }
 
-        const hashTable = new Uint32Array(
-          memory.buffer,
-          align(buffer.byteLength),
-          SIZE
-        );
+        const result = instance.exports[methodName](...raw);
 
-        const resultLen = compact(
-          align(buffer.byteLength) + 4 * SIZE, // target
-          0, // offsets
-          count,
-          4 * count, // source
-          align(buffer.byteLength) // hashtable
-        );
+        // writeback
+        p = 4;
+        for (const arg of args) {
+          if (typeof arg === "object" && "byteLength" in arg) {
+            const t = new Uint8Array(
+              arg.buffer,
+              arg.byteOffset,
+              arg.byteLength
+            );
+            for (let i = 0; i < arg.byteLength; i++) {
+              t[i] = bytes[p + i];
+            }
 
-        const result = new ArrayBuffer(4 * count + resultLen);
-        const resultBytes = new Uint8Array(result, 0, result.byteLength);
-
-        tmp = new Uint8Array(memory.buffer, 0, 4 * count);
-        for (let i = 0; i < 4 * count; i++) {
-          resultBytes[i] = tmp[i];
-        }
-
-        tmp = new Uint8Array(
-          memory.buffer,
-          align(buffer.byteLength) + 4 * SIZE,
-          resultLen
-        );
-        for (let i = 0; i < resultLen; i++) {
-          resultBytes[4 * count + i] = tmp[i];
+            p += align(arg.byteLength);
+          }
         }
 
         return result;
+      };
+
+      const compactJS = (instance, target, offsets, count, source) => {
+        const SIZE = 65536;
+
+        return interop(
+          instance,
+          "compact",
+          target,
+          offsets,
+          count,
+          source,
+          new Uint32Array(SIZE)
+        );
       };
 
       WebAssembly.instantiateStreaming(fetch("./strings.c.wasm"), {}).then(
@@ -72,50 +94,46 @@
             .fill(0)
             .map(() => Math.random().toString(16).substring(11));
 
-          const mem = new ArrayBuffer(4 * data.length + 6 * data.length);
-          const strings = new Uint32Array(mem, 0, data.length);
-          const buffer = new Uint8Array(
-            mem,
-            strings.byteOffset + strings.byteLength,
-            mem.byteLength - (strings.byteOffset + strings.byteLength)
-          );
+          const strings = new Uint32Array(data.length);
+          const source = new Uint8Array(6 * data.length);
 
           let p = 0;
           for (let i = 0; i < data.length; i += 1) {
             const value = data[i];
             strings[i] = p;
 
-            const encoded = new TextEncoder().encode(value);
-
+            const encoded = new TextEncoder().encode(value); // encode into?
             for (let j = 0; j < encoded.byteLength; j += 1) {
-              buffer[p] = encoded[j];
+              source[p] = encoded[j];
               p += 1;
             }
 
-            buffer[p] = 0xff;
+            source[p] = 0xff;
             p += 1;
           }
 
           const s = performance.now();
-          const target = compactStrings(result.instance, mem, data.length);
-          console.log({ mem, target });
-          console.log("Time taken: ", performance.now() - s);
-          console.log({ p, len: target.byteLength - 4 * data.length });
-
-          const strings2 = new Uint32Array(target, 0, data.length);
-          const buffer2 = new Uint8Array(
+          const target = new Uint8Array(source.byteLength);
+          const targetLen = compactJS(
+            result.instance,
             target,
-            strings2.byteOffset + strings2.byteLength,
-            target.byteLength - (strings2.byteOffset + strings2.byteLength)
+            strings,
+            data.length,
+            source
           );
+          console.log(`Size: ${p} -> ${targetLen}`);
+          console.log("Time taken: ", performance.now() - s);
 
           for (let i = 0; i < Math.min(16, data.length); i += 1) {
-            const p = strings2[i];
+            const p = strings[i];
+
+            // get string length
             let n = 0;
-            while (buffer2[p + n] !== 0xff) n += 1;
+            while (target[p + n] !== 0xff) n += 1;
+
             const encoded = new Uint8Array(n);
             for (let j = 0; j < n; j += 1) {
-              encoded[j] = buffer[p + j];
+              encoded[j] = target[p + j];
             }
             console.log(new TextDecoder().decode(encoded));
           }
