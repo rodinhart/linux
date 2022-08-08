@@ -20,9 +20,11 @@
         }
 
         // get current size
-        const needed = Math.ceil(required / (256 * 256));
-        if (needed > 2) {
-          memory.grow(needed - 2);
+        const extra = Math.ceil(
+          (required - memory.buffer.byteLength) / (256 * 256)
+        );
+        if (extra > 0) {
+          memory.grow(extra);
         }
 
         const bytes = new Uint8Array(
@@ -97,19 +99,18 @@
           const strings = new Uint32Array(data.length);
           const source = new Uint8Array(6 * data.length);
 
+          const encoder = new TextEncoder();
           let p = 0;
           for (let i = 0; i < data.length; i += 1) {
             const value = data[i];
             strings[i] = p;
 
-            const encoded = new TextEncoder().encode(value); // encode into?
-            for (let j = 0; j < encoded.byteLength; j += 1) {
-              source[p] = encoded[j];
-              p += 1;
-            }
-
-            source[p] = 0xff;
-            p += 1;
+            const r = encoder.encodeInto(
+              value,
+              new Uint8Array(source.buffer, p, source.byteLength - p)
+            );
+            source[p + r.written] = 0xff;
+            p += r.written + 1;
           }
 
           const s = performance.now();
@@ -121,8 +122,8 @@
             data.length,
             source
           );
-          console.log(`Size: ${p} -> ${targetLen}`);
           console.log("Time taken: ", performance.now() - s);
+          console.log(`Size: ${p} -> ${targetLen}`);
 
           for (let i = 0; i < Math.min(16, data.length); i += 1) {
             const p = strings[i];
