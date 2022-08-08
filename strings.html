@@ -6,7 +6,7 @@
   <body>
     <script>
       const align = (p) => 4 * (((p + 3) / 4) | 0);
-      const compactStrings = (stringsInstance, buffer, len) => {
+      const compactStrings = (stringsInstance, buffer, count) => {
         const SIZE = 65536;
 
         const {
@@ -15,8 +15,7 @@
 
         // get current size
         const needed = Math.ceil(
-          (align(buffer.byteLength) + 4 * SIZE + 4 * len + 6 * len) /
-            (256 * 256)
+          (align(buffer.byteLength) + 4 * SIZE + 6 * count) / (256 * 256)
         );
         if (needed > 2) {
           memory.grow(needed - 2);
@@ -39,24 +38,28 @@
         );
 
         const resultLen = compact(
-          0,
-          len,
-          4 * len,
-          align(buffer.byteLength) + 4 * SIZE,
-          align(buffer.byteLength) + 4 * SIZE + 4 * len,
-          align(buffer.byteLength)
+          align(buffer.byteLength) + 4 * SIZE, // target
+          0, // offsets
+          count,
+          4 * count, // source
+          align(buffer.byteLength) // hashtable
         );
+
+        const result = new ArrayBuffer(4 * count + resultLen);
+        const resultBytes = new Uint8Array(result, 0, result.byteLength);
+
+        tmp = new Uint8Array(memory.buffer, 0, 4 * count);
+        for (let i = 0; i < 4 * count; i++) {
+          resultBytes[i] = tmp[i];
+        }
 
         tmp = new Uint8Array(
           memory.buffer,
           align(buffer.byteLength) + 4 * SIZE,
-          4 * len + resultLen
+          resultLen
         );
-
-        const result = new ArrayBuffer(4 * len + resultLen);
-        const resultBytes = new Uint8Array(result, 0, result.byteLength);
-        for (let i = 0; i < result.byteLength; i++) {
-          resultBytes[i] = tmp[i];
+        for (let i = 0; i < resultLen; i++) {
+          resultBytes[4 * count + i] = tmp[i];
         }
 
         return result;
