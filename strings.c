@@ -6,9 +6,20 @@
 #define FREE ((char **)4)
 typedef unsigned long size_t;
 
+void *memset(void *dest, int ch, size_t count)
+{
+  char *t = dest;
+  for (size_t i = 0; i < count; i++)
+  {
+    t[i] = ch;
+  }
+
+  return dest;
+}
+
 void *malloc(size_t size)
 {
-  char *p = *FREE;
+  char *p = memset(*FREE, 0, size);
   *FREE = p + size;
 
   return p;
@@ -88,7 +99,7 @@ int compact(string target, int offsets[], int count, string source)
   string *hashArray = (string *)malloc(SIZE * sizeof(string));
 
   string end = target;
-  for (int i = 0; i < count; i += 1)
+  for (int i = 0; i < count; i++)
   {
     string match = search(hashArray, source + offsets[i]);
     if (match)
