@@ -1,4 +1,20 @@
+// Tony Hoare's mistake
 #define NULL 0
+
+// memory management
+#define END ((char **)0)
+#define FREE ((char **)4)
+typedef unsigned long size_t;
+
+void *malloc(size_t size)
+{
+  char *p = *FREE;
+  *FREE = p + size;
+
+  return p;
+}
+
+// set of strings
 #define SIZE (65536)
 
 typedef unsigned char *string;
@@ -66,8 +82,11 @@ void insert(string hashArray[], string key)
   hashArray[hashIndex] = key;
 }
 
-int compact(string target, int offsets[], int count, string source, string hashArray[])
+// main
+int compact(string target, int offsets[], int count, string source)
 {
+  string *hashArray = (string *)malloc(SIZE * sizeof(string));
+
   string end = target;
   for (int i = 0; i < count; i += 1)
   {

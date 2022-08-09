@@ -5,14 +5,30 @@
 
   <body>
     <script>
+      /*
+        WORKSPACE
+
+        0 end
+        4 free
+        8
+
+      */
+
+      const END = 0;
+      const FREE = 4;
+      const USER = 8;
+
       const align = (p) => 4 * (((p + 3) / 4) | 0);
 
-      const interop = ({ instance, method, writeback }, ...args) => {
+      const interop = (
+        { instance, method, workMemory, writeback },
+        ...args
+      ) => {
         const {
           exports: { memory },
         } = instance;
 
-        let required = 0;
+        let required = workMemory;
         for (const arg of args) {
           if (typeof arg === "object" && "byteLength" in arg) {
             required += align(arg.byteLength);
@@ -26,6 +42,8 @@
         if (extra > 0) {
           memory.grow(extra);
         }
+        const workspace = new Uint32Array(memory.buffer, 0, USER / 4);
+        workspace[END / 4] = memory.buffer.byteLength;
 
         const bytes = new Uint8Array(
           memory.buffer,
@@ -34,7 +52,7 @@
         );
 
         const raw = [];
-        let p = 4;
+        let p = USER;
         for (const arg of args) {
           if (typeof arg === "object" && "byteLength" in arg) {
             raw.push(p);
@@ -53,10 +71,12 @@
           }
         }
 
+        workspace[FREE / 4] = p;
+
         const result = instance.exports[method](...raw);
 
         // writeback
-        p = 4;
+        p = USER;
         for (let i = 0; i < args.length; i++) {
           const arg = args[i];
           if (typeof arg === "object" && "byteLength" in arg) {
@@ -82,12 +102,16 @@
         const SIZE = 65536;
 
         return interop(
-          { instance, method: "compact", writeback: new Set([0, 1]) },
+          {
+            instance,
+            method: "compact",
+            workMemory: 4 * SIZE,
+            writeback: new Set([0, 1]),
+          },
           target,
           offsets,
           count,
-          source,
-          new Uint32Array(SIZE)
+          source
         );
       };
 
